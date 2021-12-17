@@ -21,7 +21,7 @@ jobs:
     - uses: actions/checkout@v2
     - uses: azure/setup-helm@v1
       with:
-        version: ${matrix.HELM_VERSION}
+        version: ${{ matrix.HELM_VERSION }}
     - name: Build
       run: make build
     - name: Unit Test
