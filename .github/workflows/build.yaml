@@ -30,6 +30,7 @@ jobs:
            else
              helm repo add stable https://charts.helm.sh/stable
            fi
+           make deps
            make build
            make test-unit
            sed -i "/^hooks:/,+2 d" plugin.yaml
