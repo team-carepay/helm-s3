@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        HELM_VERSION: [2.17, 3.4, 3.5]
+        HELM_VERSION: [2.17.0, 3.4.0, 3.5.0]
     services:
       minio:
         image: minio/minio:edge-cicd
