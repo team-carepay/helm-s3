@@ -25,9 +25,9 @@ jobs:
     - name: Build
       run: make build
     - name: Unit Test
-      run: make test
+      run: make test-unit
     - name: E2E Test
-      run: make test
+      run: make test-e2e
       env:
         AWS_ACCESS_KEY_ID: minioadmin
         AWS_SECRET_ACCESS_KEY: minioadmin
