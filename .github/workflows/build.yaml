@@ -14,8 +14,6 @@ jobs:
         image: minio/minio:edge-cicd
         ports:
           - 9000:9000
-        volumes:
-          - ${{ github.workspace }}/data:/data
     steps:
     - uses: actions/setup-go@v2
       with:
