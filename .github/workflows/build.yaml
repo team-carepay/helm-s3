@@ -8,12 +8,14 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        HELM_VERSION: [2.17.0, 3.4.0, 3.5.0]
+        HELM_VERSION: [3.5.0]
     services:
       minio:
         image: minio/minio:edge-cicd
         ports:
           - 9000:9000
+    env:
+      GOPATH: ${{ github.workspace }}/go
     steps:
     - uses: actions/setup-go@v2
       with:
@@ -22,12 +24,17 @@ jobs:
     - uses: azure/setup-helm@v1
       with:
         version: ${{ matrix.HELM_VERSION }}
-    - name: Build
-      run: make build
-    - name: Unit Test
-      run: make test-unit
-    - name: E2E Test
-      run: make test-e2e
+    - run: |
+           if [ "${{ matrix.HELM_VERSION }}" == "2.17.0" ]; then
+             helm init --client-only
+           else
+             helm repo add stable https://charts.helm.sh/stable
+           fi
+           make build
+           make test-unit
+           sed -i "/^hooks:/,+2 d" plugin.yaml
+           helm install .
+           make test-e2e
       env:
         AWS_ACCESS_KEY_ID: minioadmin
         AWS_SECRET_ACCESS_KEY: minioadmin
