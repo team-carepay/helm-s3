@@ -33,7 +33,7 @@ jobs:
            fi
            make test-unit
            sed -i "/^hooks:/,+2 d" plugin.yaml
-           helm install .
+           helm plugin install .
            make test-e2e
       env:
         AWS_ACCESS_KEY_ID: minioadmin
