@@ -41,4 +41,4 @@ jobs:
         AWS_SECRET_ACCESS_KEY: minioadmin
         AWS_ENDPOINT: localhost:9000
         AWS_DISABLE_SSL: true
-        AWS_REGION: us-east-1
+        AWS_DEFAULT_REGION: us-east-1
