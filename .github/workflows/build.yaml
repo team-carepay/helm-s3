@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        HELM_VERSION: [3.5.0]
+        HELM_VERSION: [2.17.0, 3.4.0, 3.5.0]
     services:
       minio:
         image: minio/minio:edge-cicd
@@ -25,17 +25,21 @@ jobs:
     - uses: azure/setup-helm@v1
       with:
         version: ${{ matrix.HELM_VERSION }}
-    - run: |
+    - name: configure helm
+      run: |
            if [ "${{ matrix.HELM_VERSION }}" == "2.17.0" ]; then
              helm init --client-only
            else
              helm repo add stable https://charts.helm.sh/stable
            fi
-           go test -v $(go list ./... | grep -v e2e)
+    - name: unit test
+      run: go test -v $(go list ./... | grep -v e2e)
+    - name: build and install local
+      run: go build -o bin/helms3 ./cmd/helms3
            sed -i "/^hooks:/,+2 d" plugin.yaml
-           go build -o bin/helms3 ./cmd/helms3
            helm plugin install .
-           go test -v ./tests/e2e/...
+    - name: e2e tests
+      run: go test -v ./tests/e2e/...
       env:
         AWS_ACCESS_KEY_ID: minioadmin
         AWS_SECRET_ACCESS_KEY: minioadmin
