@@ -31,10 +31,11 @@ jobs:
            else
              helm repo add stable https://charts.helm.sh/stable
            fi
-           make test-unit
+	   go test -v $(go list ./... | grep -v e2e)
            sed -i "/^hooks:/,+2 d" plugin.yaml
+           go build -o bin/helms3 ./cmd/helms3
            helm plugin install .
-           make test-e2e
+	   go test -v ./tests/e2e/...
       env:
         AWS_ACCESS_KEY_ID: minioadmin
         AWS_SECRET_ACCESS_KEY: minioadmin
