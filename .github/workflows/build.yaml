@@ -35,7 +35,8 @@ jobs:
     - name: unit test
       run: go test -v $(go list ./... | grep -v e2e)
     - name: build and install local
-      run: go build -o bin/helms3 ./cmd/helms3
+      run: |
+           go build -o bin/helms3 ./cmd/helms3
            sed -i "/^hooks:/,+2 d" plugin.yaml
            helm plugin install .
     - name: e2e tests
