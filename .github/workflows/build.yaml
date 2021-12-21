@@ -1,0 +1,64 @@
+name: build
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    env:
+      GOPATH: ${{ github.workspace }}/go
+      GO111MODULE: on
+    steps:
+    - uses: actions/setup-go@v2
+      with:
+        go-version: ^1.15
+    - uses: actions/checkout@v2
+    - name: unit test
+      run: go test -v $(go list ./... | grep -v e2e) -coverprofile=unit-coverage.out -covermode=atomic
+    - uses: codecov/codecov-action@v2
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: unit-coverage.out
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        HELM_VERSION: [2.17.0, 3.4.0, 3.5.0]
+    services:
+      minio:
+        image: minio/minio:edge-cicd
+        ports:
+          - 9000:9000
+    env:
+      GOPATH: ${{ github.workspace }}/go
+      GO111MODULE: on
+    steps:
+    - uses: actions/setup-go@v2
+      with:
+        go-version: ^1.15
+    - uses: actions/checkout@v2
+    - uses: azure/setup-helm@v1
+      with:
+        version: ${{ matrix.HELM_VERSION }}
+    - name: configure helm v2
+      if: startswith(matrix.HELM_VERSION, '2.')
+      run: helm init --client-only
+    - name: build and install local
+      run: |
+           go build -o bin/helms3 ./cmd/helms3
+           sed -i "/^hooks:/,+2 d" plugin.yaml
+           helm plugin install .
+    - name: e2e tests
+      run: go test -v ./tests/e2e/... -coverprofile=e2e-coverage.out -covermode=atomic
+      env:
+        AWS_ACCESS_KEY_ID: minioadmin
+        AWS_SECRET_ACCESS_KEY: minioadmin
+        AWS_ENDPOINT: http://localhost:9000
+        AWS_DISABLE_SSL: true
+        AWS_DEFAULT_REGION: us-east-1
+    - uses: codecov/codecov-action@v2
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        files: e2e-coverage.out

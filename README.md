@@ -3,6 +3,8 @@
 [![CircleCI](https://circleci.com/gh/hypnoglow/helm-s3/tree/master.svg?style=shield)](https://circleci.com/gh/hypnoglow/helm-s3/tree/master)
 [![License MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=flat)](LICENSE)
 [![GitHub release](https://img.shields.io/github/release/hypnoglow/helm-s3.svg)](https://github.com/hypnoglow/helm-s3/releases)
+[![codecov](https://codecov.io/gh/team-carepay/helm-s3/branch/master/graph/badge.svg)](https://codecov.io/gh/team-carepay/helm-s3)
+
 
 The Helm plugin that provides Amazon S3 protocol support.
 

@@ -8,7 +8,6 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/hypnoglow/helm-s3/internal/awss3"
-	"github.com/hypnoglow/helm-s3/internal/awsutil"
 )
 
 type proxyCmd struct {
@@ -18,11 +17,7 @@ type proxyCmd struct {
 const indexYaml = "index.yaml"
 
 func (act proxyCmd) Run(ctx context.Context) error {
-	sess, err := awsutil.Session(awsutil.AssumeRoleTokenProvider(awsutil.StderrTokenProvider))
-	if err != nil {
-		return err
-	}
-	storage := awss3.New(sess)
+	storage := awss3.NewStorage()
 
 	b, err := storage.FetchRaw(ctx, act.uri)
 	if err != nil {

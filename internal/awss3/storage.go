@@ -4,16 +4,17 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/smithy-go"
 	"io"
+	"io/ioutil"
 	"net/url"
 	"os"
 	"strings"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/pkg/errors"
 
 	"github.com/hypnoglow/helm-s3/internal/helmutil"
@@ -37,22 +38,39 @@ var (
 )
 
 // New returns a new Storage.
-func New(session *session.Session) *Storage {
-	return &Storage{session: session}
-}
-
-// Returns desired encryption
-func getSSE() *string {
-	sse := os.Getenv(awsS3encryption)
-	if sse == "" {
-		return nil
+func NewStorage() *Storage {
+	var awsRegion = os.Getenv("AWS_REGION")
+	if awsRegion == "" {
+		awsRegion = os.Getenv("AWS_DEFAULT_REGION")
 	}
-	return &sse
+	customResolver := aws.EndpointResolverFunc(func(_, _ string) (aws.Endpoint, error) {
+		var awsEndpoint = os.Getenv("AWS_ENDPOINT")
+		if awsEndpoint != "" {
+			return aws.Endpoint{
+				PartitionID:       "aws",
+				URL:               awsEndpoint,
+				SigningRegion:     awsRegion,
+				HostnameImmutable: true,
+			}, nil
+		}
+
+		// returning EndpointNotFoundError will allow the service to fallback to it's default resolution
+		return aws.Endpoint{}, &aws.EndpointNotFoundError{}
+	})
+	cfg, err := config.LoadDefaultConfig(context.TODO(),
+		config.WithEndpointResolver(customResolver),
+		config.WithRegion(awsRegion),
+	)
+	if err != nil {
+	}
+	s3Client := s3.NewFromConfig(cfg, func(o *s3.Options) {
+	})
+	return &Storage{s3Client}
 }
 
 // Storage provides an interface to work with AWS S3 objects by s3 protocol.
 type Storage struct {
-	session *session.Session
+	client *s3.Client
 }
 
 // Traverse traverses all charts in the repository.
@@ -76,13 +94,11 @@ func (s *Storage) traverse(ctx context.Context, repoURI string, items chan<- Cha
 		return
 	}
 
-	client := s3.New(s.session)
-
 	var continuationToken *string
 	for {
-		listOut, err := client.ListObjectsV2(&s3.ListObjectsV2Input{
-			Bucket:            aws.String(bucket),
-			Prefix:            aws.String(prefixKey),
+		listOut, err := s.client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+			Bucket:            &bucket,
+			Prefix:            &prefixKey,
 			ContinuationToken: continuationToken,
 		})
 		if err != nil {
@@ -110,8 +126,8 @@ func (s *Storage) traverse(ctx context.Context, repoURI string, items chan<- Cha
 				continue
 			}
 
-			metaOut, err := client.HeadObject(&s3.HeadObjectInput{
-				Bucket: aws.String(bucket),
+			metaOut, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
+				Bucket: &bucket,
 				Key:    obj.Key,
 			})
 			if err != nil {
@@ -134,8 +150,8 @@ func (s *Storage) traverse(ctx context.Context, repoURI string, items chan<- Cha
 				//   https://github.com/hypnoglow/helm-s3/issues/112 )
 				//
 				// In this case we have to download the ch file itself.
-				objectOut, err := client.GetObject(&s3.GetObjectInput{
-					Bucket: aws.String(bucket),
+				objectOut, err := s.client.GetObject(ctx, &s3.GetObjectInput{
+					Bucket: &bucket,
 					Key:    obj.Key,
 				})
 				if err != nil {
@@ -163,13 +179,13 @@ func (s *Storage) traverse(ctx context.Context, repoURI string, items chan<- Cha
 				reindexItem.Hash = digest
 			} else {
 				meta := helmutil.NewChartMetadata()
-				if err := meta.UnmarshalJSON([]byte(*serializedChartMeta)); err != nil {
+				if err := meta.UnmarshalJSON([]byte(serializedChartMeta)); err != nil {
 					errs <- errors.Wrap(err, "unserialize chart meta")
 					return
 				}
 
 				reindexItem.Meta = meta
-				reindexItem.Hash = *chartDigest
+				reindexItem.Hash = chartDigest
 			}
 
 			// process meta and hash
@@ -196,49 +212,42 @@ type ChartInfo struct {
 func (s *Storage) FetchRaw(ctx context.Context, uri string) ([]byte, error) {
 	bucket, key, err := parseURI(uri)
 	if err != nil {
+		return nil, errors.Wrap(err, "parseURI")
+	}
+
+	s3Obj, err := s.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: &bucket,
+		Key:    &key,
+	})
+	if err != nil {
 		return nil, err
 	}
-
-	buf := &aws.WriteAtBuffer{}
-	_, err = s3manager.NewDownloader(s.session).DownloadWithContext(
-		ctx,
-		buf,
-		&s3.GetObjectInput{
-			Bucket: aws.String(bucket),
-			Key:    aws.String(key),
-		})
+	body, err := ioutil.ReadAll(s3Obj.Body)
 	if err != nil {
-		if ae, ok := err.(awserr.Error); ok {
-			if ae.Code() == s3.ErrCodeNoSuchBucket {
-				return nil, ErrBucketNotFound
-			}
-			if ae.Code() == s3.ErrCodeNoSuchKey {
-				return nil, ErrObjectNotFound
-			}
-		}
-		return nil, errors.Wrap(err, "fetch object from s3")
+		return nil, errors.Wrap(err, "ioutil.ReadAll")
 	}
-
-	return buf.Bytes(), nil
+	return body, nil
 }
 
 // Exists returns true if an object exists in the storage.
 func (s *Storage) Exists(ctx context.Context, uri string) (bool, error) {
 	bucket, key, err := parseURI(uri)
 	if err != nil {
-		return false, err
+		return false, errors.Wrap(err, "parseURI")
 	}
 
-	_, err = s3.New(s.session).HeadObject(&s3.HeadObjectInput{
-		Bucket: aws.String(bucket),
-		Key:    aws.String(key),
+	_, err = s.client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: &bucket,
+		Key:    &key,
 	})
 	if err != nil {
-		// That's weird that there is no NotFound constant in aws sdk.
-		if ae, ok := err.(awserr.Error); ok && ae.Code() == "NotFound" {
-			return false, nil
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) {
+			if "NotFound" == apiErr.ErrorCode() {
+				return false, nil
+			}
 		}
-		return false, errors.Wrap(err, "head s3 object")
+		return false, errors.Wrap(err, "Exists")
 	}
 
 	return true, nil
@@ -246,33 +255,37 @@ func (s *Storage) Exists(ctx context.Context, uri string) (bool, error) {
 
 // PutChart puts the chart file to the storage.
 // uri must be in the form of s3 protocol: s3://bucket-name/key[...].
-func (s *Storage) PutChart(ctx context.Context, uri string, r io.Reader, chartMeta, acl string, chartDigest string, contentType string) (string, error) {
+func (s *Storage) PutChart(ctx context.Context, uri string, r io.Reader, chartMeta string, acl types.ObjectCannedACL, chartDigest string, contentType string) (string, error) {
 	bucket, key, err := parseURI(uri)
 	if err != nil {
-		return "", err
+		return "", errors.Wrap(err, "PutChart")
 	}
-	result, err := s3manager.NewUploader(s.session).UploadWithContext(
+	putObjectInput := s3.PutObjectInput{
+		Bucket:               &bucket,
+		Key:                  &key,
+		ACL:                  acl,
+		ContentType:          &contentType,
+		Body:                 r,
+		Metadata:             assembleObjectMetadata(chartMeta, chartDigest),
+	}
+	sse := os.Getenv(awsS3encryption)
+	if sse != "" {
+		putObjectInput.ServerSideEncryption = types.ServerSideEncryption(sse)
+	}
+	_, err = s.client.PutObject(
 		ctx,
-		&s3manager.UploadInput{
-			Bucket:               aws.String(bucket),
-			Key:                  aws.String(key),
-			ACL:                  aws.String(acl),
-			ContentType:          aws.String(contentType),
-			ServerSideEncryption: getSSE(),
-			Body:                 r,
-			Metadata:             assembleObjectMetadata(chartMeta, chartDigest),
-		},
+		&putObjectInput,
 	)
 	if err != nil {
 		return "", errors.Wrap(err, "upload object to s3")
 	}
 
-	return result.Location, nil
+	return uri, nil
 }
 
 // PutIndex puts the index file to the storage.
 // uri must be in the form of s3 protocol: s3://bucket-name/key[...].
-func (s *Storage) PutIndex(ctx context.Context, uri string, acl string, r io.Reader) error {
+func (s *Storage) PutIndex(ctx context.Context, uri string, acl types.ObjectCannedACL, r io.Reader) error {
 	if strings.HasPrefix(uri, "index.yaml") {
 		return errors.New("uri must not contain \"index.yaml\" suffix, it appends automatically")
 	}
@@ -282,15 +295,19 @@ func (s *Storage) PutIndex(ctx context.Context, uri string, acl string, r io.Rea
 	if err != nil {
 		return err
 	}
-	_, err = s3manager.NewUploader(s.session).UploadWithContext(
+	putObjectInput := s3.PutObjectInput{
+		Bucket: &bucket,
+		Key:    &key,
+		ACL:    acl,
+		Body:   r,
+	}
+	sse := os.Getenv(awsS3encryption)
+	if sse != "" {
+		putObjectInput.ServerSideEncryption = types.ServerSideEncryption(sse)
+	}
+	_, err = s.client.PutObject(
 		ctx,
-		&s3manager.UploadInput{
-			Bucket:               aws.String(bucket),
-			Key:                  aws.String(key),
-			ACL:                  aws.String(acl),
-			ServerSideEncryption: getSSE(),
-			Body:                 r,
-		})
+		&putObjectInput)
 	if err != nil {
 		return errors.Wrap(err, "upload index to S3 bucket")
 	}
@@ -303,14 +320,14 @@ func (s *Storage) PutIndex(ctx context.Context, uri string, acl string, r io.Rea
 func (s *Storage) Delete(ctx context.Context, uri string) error {
 	bucket, key, err := parseURI(uri)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "Delete parseURI")
 	}
 
-	_, err = s3.New(s.session).DeleteObjectWithContext(
+	_, err = s.client.DeleteObject(
 		ctx,
 		&s3.DeleteObjectInput{
-			Bucket: aws.String(bucket),
-			Key:    aws.String(key),
+			Bucket: &bucket,
+			Key:    &key,
 		},
 	)
 	if err != nil {
@@ -344,10 +361,10 @@ func parseURI(uri string) (bucket, key string, err error) {
 // To mitigate the issue with large charts which metadata is more than 2 KB,
 // we simply drop it. This affects 'reindex' operation, so that it has to download
 // the chart file (GET Request) instead of only fetching its metadata (HEAD request).
-func assembleObjectMetadata(chartMeta, chartDigest string) map[string]*string {
-	meta := map[string]*string{
-		metaChartMetadata: aws.String(chartMeta),
-		metaChartDigest:   aws.String(chartDigest),
+func assembleObjectMetadata(chartMeta, chartDigest string) map[string]string {
+	meta := map[string]string{
+		metaChartMetadata: chartMeta,
+		metaChartDigest:   chartDigest,
 	}
 	if objectMetadataSize(meta) > s3MetadataSoftLimitBytes {
 		return nil
@@ -358,14 +375,14 @@ func assembleObjectMetadata(chartMeta, chartDigest string) map[string]*string {
 
 // objectMetadataSize calculates object metadata size as described in https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingMetadata.html
 // "The size of user-defined metadata is measured by taking the sum of the number of bytes in the UTF-8 encoding of each key and value.".
-func objectMetadataSize(m map[string]*string) int {
+func objectMetadataSize(m map[string]string) int {
 	var sum int
 	for k, v := range m {
 		sum += len([]byte(k))
-		if v == nil {
+		if v == "" {
 			continue
 		}
-		sum += len([]byte(*v))
+		sum += len([]byte(v))
 	}
 	return sum
 }

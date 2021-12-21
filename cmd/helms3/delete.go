@@ -2,16 +2,17 @@ package main
 
 import (
 	"context"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
 	"github.com/pkg/errors"
 
 	"github.com/hypnoglow/helm-s3/internal/awss3"
-	"github.com/hypnoglow/helm-s3/internal/awsutil"
 	"github.com/hypnoglow/helm-s3/internal/helmutil"
 )
 
 type deleteAction struct {
-	name, version, repoName, acl string
+	name, version, repoName string
+	acl types.ObjectCannedACL
 }
 
 func (act deleteAction) Run(ctx context.Context) error {
@@ -20,11 +21,7 @@ func (act deleteAction) Run(ctx context.Context) error {
 		return err
 	}
 
-	sess, err := awsutil.Session()
-	if err != nil {
-		return err
-	}
-	storage := awss3.New(sess)
+	storage := awss3.NewStorage()
 
 	// Fetch current index.
 	b, err := storage.FetchRaw(ctx, repoEntry.IndexURL())

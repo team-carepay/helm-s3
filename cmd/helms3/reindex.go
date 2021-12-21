@@ -2,18 +2,18 @@ package main
 
 import (
 	"context"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"log"
 
 	"github.com/pkg/errors"
 
 	"github.com/hypnoglow/helm-s3/internal/awss3"
-	"github.com/hypnoglow/helm-s3/internal/awsutil"
 	"github.com/hypnoglow/helm-s3/internal/helmutil"
 )
 
 type reindexAction struct {
 	repoName string
-	acl      string
+	acl types.ObjectCannedACL
 	relative bool
 }
 
@@ -23,11 +23,7 @@ func (act reindexAction) Run(ctx context.Context) error {
 		return err
 	}
 
-	sess, err := awsutil.Session()
-	if err != nil {
-		return err
-	}
-	storage := awss3.New(sess)
+	storage := awss3.NewStorage()
 
 	items, errs := storage.Traverse(ctx, repoEntry.URL())
 

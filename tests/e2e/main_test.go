@@ -25,7 +25,11 @@ func TestMain(m *testing.M) {
 }
 
 func setup() {
-	if os.Getenv("AWS_ENDPOINT") == "" {
+	awsEndpoint := os.Getenv("AWS_ENDPOINT")
+	if strings.HasPrefix(awsEndpoint, "http://") {
+		awsEndpoint = awsEndpoint[7:]
+	}
+	if awsEndpoint == "" {
 		panic("AWS_ENDPOINT is empty")
 	}
 
@@ -39,7 +43,7 @@ func setup() {
 
 	var err error
 	mc, err = minio.New(
-		os.Getenv("AWS_ENDPOINT"),
+		awsEndpoint,
 		os.Getenv("AWS_ACCESS_KEY_ID"),
 		os.Getenv("AWS_SECRET_ACCESS_KEY"),
 		false,

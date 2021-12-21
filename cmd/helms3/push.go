@@ -2,13 +2,13 @@ package main
 
 import (
 	"context"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"os"
 	"path/filepath"
 
 	"github.com/pkg/errors"
 
 	"github.com/hypnoglow/helm-s3/internal/awss3"
-	"github.com/hypnoglow/helm-s3/internal/awsutil"
 	"github.com/hypnoglow/helm-s3/internal/helmutil"
 )
 
@@ -33,7 +33,7 @@ type pushAction struct {
 	force          bool
 	dryRun         bool
 	ignoreIfExists bool
-	acl            string
+	acl            types.ObjectCannedACL
 	contentType    string
 	relative       bool
 }
@@ -44,11 +44,7 @@ func (act pushAction) Run(ctx context.Context) error {
 		return ErrForceAndIgnoreIfExists
 	}
 
-	sess, err := awsutil.Session()
-	if err != nil {
-		return err
-	}
-	storage := awss3.New(sess)
+	storage := awss3.NewStorage()
 
 	fpath, err := filepath.Abs(act.chartPath)
 	if err != nil {
