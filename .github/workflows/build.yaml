@@ -55,7 +55,7 @@ jobs:
       env:
         AWS_ACCESS_KEY_ID: minioadmin
         AWS_SECRET_ACCESS_KEY: minioadmin
-        AWS_ENDPOINT: localhost:9000
+        AWS_ENDPOINT: http://localhost:9000
         AWS_DISABLE_SSL: true
         AWS_DEFAULT_REGION: us-east-1
     - uses: codecov/codecov-action@v2
