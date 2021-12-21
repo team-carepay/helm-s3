@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [0.11.0] - 2021-12-21
+
+- Upgraded to AWS SDK Go v2
+- Added github actions
 - Set supported Helm versions to v2.17, v3.4, v3.5.
 
 ## [0.10.0] - 2020-10-27
