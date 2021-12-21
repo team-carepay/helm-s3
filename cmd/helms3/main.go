@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"log"
 	"os"
 	"time"
@@ -75,10 +76,10 @@ func main() {
 		Default(defaultTimeoutString).
 		Duration()
 
-	acl := cli.Flag("acl", helpFlagACL).
+	acl := getAcl(cli.Flag("acl", helpFlagACL).
 		Default("").
-		OverrideDefaultFromEnvar("S3_ACL").
-		String()
+		Envar("S3_ACL").
+		String())
 
 	initCmd := cli.Command(actionInit, "Initialize empty repository on AWS S3.")
 	initURI := initCmd.Arg("uri", "URI of repository, e.g. s3://awesome-bucket/charts").
@@ -145,7 +146,7 @@ func main() {
 	case actionInit:
 		act = initAction{
 			uri: *initURI,
-			acl: *acl,
+			acl: acl,
 		}
 		defer fmt.Printf("Initialized empty repository at %s\n", *initURI)
 
@@ -156,7 +157,7 @@ func main() {
 			force:          *pushForce,
 			dryRun:         *pushDryRun,
 			ignoreIfExists: *pushIgnoreIfExists,
-			acl:            *acl,
+			acl:            acl,
 			contentType:    *pushContentType,
 			relative:       *pushRelative,
 		}
@@ -164,7 +165,7 @@ func main() {
 	case actionReindex:
 		act = reindexAction{
 			repoName: *reindexTargetRepository,
-			acl:      *acl,
+			acl:      acl,
 			relative: *reindexRelative,
 		}
 		defer fmt.Printf("Repository %s was successfully reindexed.\n", *reindexTargetRepository)
@@ -174,7 +175,7 @@ func main() {
 			name:     *deleteChartName,
 			version:  *deleteChartVersion,
 			repoName: *deleteTargetRepository,
-			acl:      *acl,
+			acl:      acl,
 		}
 	default:
 		return
@@ -199,4 +200,25 @@ func isAction(name string) bool {
 		name == actionPush ||
 		name == actionReindex ||
 		name == actionVersion
+}
+
+func getAcl(name *string) types.ObjectCannedACL {
+	switch *name {
+	case "private":
+		return types.ObjectCannedACLPrivate
+	case "public-read":
+		return types.ObjectCannedACLPublicRead
+	case "public-read-write":
+		return types.ObjectCannedACLPublicReadWrite
+	case "authenticated-read":
+		return types.ObjectCannedACLAuthenticatedRead
+	case "aws-exec-read":
+		return types.ObjectCannedACLAwsExecRead
+	case "bucket-owner-read":
+		return types.ObjectCannedACLBucketOwnerRead
+	case "bucket-owner-full-control":
+		return types.ObjectCannedACLBucketOwnerFullControl
+	default:
+		return ""
+	}
 }

@@ -2,17 +2,17 @@ package main
 
 import (
 	"context"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
 	"github.com/pkg/errors"
 
 	"github.com/hypnoglow/helm-s3/internal/awss3"
-	"github.com/hypnoglow/helm-s3/internal/awsutil"
 	"github.com/hypnoglow/helm-s3/internal/helmutil"
 )
 
 type initAction struct {
 	uri string
-	acl string
+	acl types.ObjectCannedACL
 }
 
 func (act initAction) Run(ctx context.Context) error {
@@ -21,11 +21,7 @@ func (act initAction) Run(ctx context.Context) error {
 		return errors.WithMessage(err, "get index reader")
 	}
 
-	sess, err := awsutil.Session()
-	if err != nil {
-		return err
-	}
-	storage := awss3.New(sess)
+	storage := awss3.NewStorage()
 
 	if err := storage.PutIndex(ctx, act.uri, act.acl, r); err != nil {
 		return errors.WithMessage(err, "upload index to s3")
